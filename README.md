@@ -2,19 +2,20 @@
 
 # 🎬 WatchQueue
 
-### *Your intelligent media watchlist — paste a link, we do the rest.*
+### *Your intelligent productivity hub — media watchlist, to-do, timetable & attendance.*
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://postgresql.org)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white)](https://sqlalchemy.org)
 [![JWT](https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)](https://jwt.io)
 [![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Gemini](https://img.shields.io/badge/Gemini_AI-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://aistudio.google.com)
 
 ---
 
 *A to-do list for your digital life — movies, classes, books, and everything in between.*
 *Paste a YouTube link, streaming URL, or Instagram post — WatchQueue auto-categorizes it,*
-*organizes your education by topic, and tracks your progress across all media.*
+*organizes your education by topic, ranks everything by priority, and tracks your attendance.*
 
 [Features](#-features) · [Quick Start](#-quick-start) · [API Docs](#-api-documentation) · [Architecture](#-architecture)
 
@@ -38,6 +39,9 @@
 - [API Documentation](#-api-documentation)
   - [Authentication](#authentication)
   - [Media Items](#media-items)
+  - [To-Do & Leaderboard](#to-do--leaderboard)
+  - [Timetable](#timetable)
+  - [Attendance](#attendance)
   - [Tags](#tags)
 - [Auto-Categorization Engine](#-auto-categorization-engine)
 - [Database Schema](#-database-schema)
@@ -50,19 +54,20 @@
 
 ## 🎯 Overview
 
-**WatchQueue** is a personal media management app that lets you organize everything you want to watch, learn, or read — all in one place. Think of it as a to-do list, but for your entire media consumption.
+**WatchQueue** is a personal productivity hub that combines a **media watchlist**, **to-do list**, **AI-powered timetable extraction**, and **attendance tracking** — all in one place.
 
-The killer feature? **Paste any URL** — YouTube video, Netflix show, Instagram reel, or a Goodreads book — and WatchQueue **automatically categorizes** it using content-based analysis. No manual sorting needed.
+The killer feature? **Paste any URL** — YouTube video, Netflix show, Instagram reel, or a Goodreads book — and WatchQueue **automatically categorizes** it using content-based analysis. Assign a **priority score**, and everything — media AND normal tasks — shows up in a **unified leaderboard** ranked by what matters most.
 
 ### The Problem
-You find a great YouTube tutorial, a movie recommendation, a course you want to take, and an interesting book — all in the same day. Where do you save them? Notes app? Browser bookmarks? A random WhatsApp message to yourself? They all get lost.
+You find a great YouTube tutorial, a movie recommendation, a course you want to take, an assignment to finish, and your timetable just changed — all in the same day. Where do you track it all? Notes app? Browser bookmarks? A random WhatsApp message to yourself? They all get lost.
 
 ### The Solution
-WatchQueue is a single, organized home for all your media. Paste a link, and it:
-1. **Extracts metadata** (title, thumbnail, duration, description)
-2. **Auto-categorizes** it (Movie, Education, Entertainment, Book, etc.)
-3. **Sub-classifies** education content by topic (AI, Computer Science, Web Dev, etc.)
-4. **Tracks your progress** (Unwatched → Watching → Completed)
+WatchQueue is a single, organized home for your entire digital life:
+1. **Paste a link** → auto-extracts metadata and categorizes (Movie, Education, Book, etc.)
+2. **Assign priority** (1–10) → everything ranks in a unified leaderboard
+3. **Add normal to-dos** alongside media items — all tracked together
+4. **Upload your timetable** → AI extracts subjects per day automatically
+5. **Track attendance** → mark present/absent daily, see per-subject percentages
 
 ---
 
@@ -104,9 +109,32 @@ Dedicated view for learning content, organized by topic:
 | 📰 Articles | Blog posts, articles, news links |
 | 📦 Other | Anything else — user can reclassify |
 
-### 📊 Progress Tracking
+### 📝 Unified To-Do + Priority Leaderboard
+- **Normal to-dos**: Create tasks with title, description, due date, and **priority score (1–10)**
+- **Media items as to-dos**: Every video, movie, and book also gets a priority score
+- **Unified leaderboard**: ALL items (tasks + videos + movies + books) ranked by priority score
+  - 🥇🥈🥉 badges for top 3 items
+  - Type badges: 📝 Task, 🎬 Movie, 📚 Education, 🎮 Entertainment, 📖 Book
+  - Color-coded priority: 1-3 green, 4-6 yellow, 7-9 orange, 10 red/fire
+- **Filter tabs**: All | Tasks Only | Media Only
+
+### 📅 AI-Powered Timetable
+- **Upload a photo** of your timetable (printed or screenshot)
+- **Google Gemini Vision** extracts subjects, times, and rooms automatically
+- **Weekly view**: Mon–Sat grid with editable slots
+- **Today's classes**: highlighted at the top for quick reference
+- Re-upload anytime when your schedule changes
+
+### 📊 Attendance Tracker
+- **Daily attendance**: mark present/absent for each subject (auto-populated from timetable)
+- **Calendar view**: monthly grid color-coded by attendance (green/yellow/red/gray)
+- **Working day toggle**: mark holidays and cancelled class days
+- **Per-subject stats**: attendance percentage with warnings below 75%
+- **Overall dashboard**: total working days, attended, overall percentage
+
+### 📈 Progress Tracking
 - **Status management**: Unwatched → Watching → Completed / Dropped / On Hold
-- **Dashboard stats**: Visual counters by category and status
+- **Dashboard stats**: Visual counters by category, status, and priority
 - **Education progress**: Track completion across topics
 
 ### 🏷️ Custom Tags
@@ -133,6 +161,7 @@ Dedicated view for learning content, organized by topic:
 | **python-jose** | JWT token creation and validation |
 | **bcrypt** | Password hashing (salted, adaptive) |
 | **yt-dlp** | YouTube/video metadata extraction (no download) |
+| **Google Gemini** | AI vision for timetable image extraction |
 | **httpx** | Async HTTP client for external API calls |
 | **slowapi** | Rate limiting middleware |
 | **Pydantic v2** | Request/response validation and serialization |
@@ -150,49 +179,57 @@ Dedicated view for learning content, organized by topic:
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     FRONTEND (Static)                       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│  │  Login   │ │ Register │ │Dashboard │ │Education │       │
-│  │  Page    │ │  Page    │ │  (Main)  │ │   Hub    │       │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘       │
-│       └─────────────┴────────────┴─────────────┘            │
-│                          │ fetch()                          │
-└──────────────────────────┼──────────────────────────────────┘
-                           │ REST API (JSON)
-┌──────────────────────────┼──────────────────────────────────┐
-│                     BACKEND (FastAPI)                        │
-│                          │                                   │
-│  ┌──────────────┐ ┌──────┴───────┐ ┌──────────────┐        │
-│  │  Auth Router │ │ Media Router │ │ Tags Router  │        │
-│  │  /api/auth/* │ │ /api/media/* │ │ /api/tags/*  │        │
-│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘        │
-│         │                │                │                  │
-│  ┌──────┴────────────────┴────────────────┴───────┐         │
-│  │              Dependencies Layer                 │         │
-│  │  (JWT decode, get_current_user, get_db)        │         │
-│  └────────────────────┬───────────────────────────┘         │
-│                       │                                      │
-│  ┌────────────────────┴───────────────────────────┐         │
-│  │           Categorizer Engine                    │         │
-│  │  ┌─────────┐ ┌──────────┐ ┌────────────────┐  │         │
-│  │  │ yt-dlp  │ │ Keyword  │ │  Confidence    │  │         │
-│  │  │Metadata │ │ Matcher  │ │  Scorer        │  │         │
-│  │  │Extract  │ │          │ │                │  │         │
-│  │  └─────────┘ └──────────┘ └────────────────┘  │         │
-│  └────────────────────────────────────────────────┘         │
-│                       │                                      │
-└───────────────────────┼──────────────────────────────────────┘
-                        │ SQLAlchemy ORM
-┌───────────────────────┼──────────────────────────────────────┐
-│                  PostgreSQL Database                          │
-│  ┌───────┐ ┌────────────┐ ┌──────────────────┐ ┌──────┐    │
-│  │ users │ │media_items │ │education_metadata│ │ tags │    │
-│  └───────┘ └────────────┘ └──────────────────┘ └──────┘    │
-│                                                 ┌──────────┐│
-│                                                 │media_tags││
-│                                                 └──────────┘│
-└──────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                        FRONTEND (Static)                          │
+│  ┌────────┐ ┌────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
+│  │ Login  │ │Register│ │Dashboard │ │Education │ │To-Do /    │  │
+│  │        │ │        │ │  (Hub)   │ │   Hub    │ │Leaderboard│  │
+│  └───┬────┘ └───┬────┘ └────┬─────┘ └────┬─────┘ └─────┬─────┘  │
+│      │          │           │            │              │         │
+│  ┌───┴──────────┴───────────┴────────────┴──────────────┴──────┐ │
+│  │               ┌───────────┐  ┌────────────┐                 │ │
+│  │               │ Timetable │  │ Attendance │                 │ │
+│  │               └─────┬─────┘  └──────┬─────┘                 │ │
+│  └─────────────────────┼───────────────┼───────────────────────┘ │
+│                        │ fetch()       │                         │
+└────────────────────────┼───────────────┼─────────────────────────┘
+                         │ REST API      │
+┌────────────────────────┼───────────────┼─────────────────────────┐
+│                    BACKEND (FastAPI)                              │
+│                        │               │                         │
+│  ┌──────────┐ ┌────────┴──┐ ┌─────────┴──┐ ┌──────────────────┐ │
+│  │Auth      │ │Media      │ │Todos       │ │Timetable /       │ │
+│  │Router    │ │Router     │ │Router +    │ │Attendance Router │ │
+│  │          │ │           │ │Leaderboard │ │                  │ │
+│  └────┬─────┘ └─────┬─────┘ └──────┬─────┘ └────────┬─────────┘ │
+│       │             │              │                 │           │
+│  ┌────┴─────────────┴──────────────┴─────────────────┴────────┐  │
+│  │                  Dependencies Layer                        │  │
+│  │         (JWT decode, get_current_user, get_db)             │  │
+│  └──────────────────────┬────────────────────────────┘         │  │
+│                         │                                      │  │
+│  ┌──────────────────────┴──────────────────────────┐           │  │
+│  │           Categorizer Engine     Timetable AI   │           │  │
+│  │  ┌─────────┐ ┌──────────┐  ┌────────────────┐  │           │  │
+│  │  │ yt-dlp  │ │ Keyword  │  │ Gemini Vision  │  │           │  │
+│  │  │Metadata │ │ Matcher  │  │ (Image → JSON) │  │           │  │
+│  │  └─────────┘ └──────────┘  └────────────────┘  │           │  │
+│  └─────────────────────────────────────────────────┘           │  │
+│                         │                                      │  │
+└─────────────────────────┼──────────────────────────────────────┘  │
+                          │ SQLAlchemy ORM                          │
+┌─────────────────────────┼────────────────────────────────────────┐
+│                   PostgreSQL Database                             │
+│  ┌───────┐ ┌────────────┐ ┌──────────────────┐ ┌──────────────┐ │
+│  │ users │ │media_items │ │education_metadata│ │    todos      │ │
+│  └───────┘ └────────────┘ └──────────────────┘ └──────────────┘ │
+│  ┌──────┐  ┌──────────┐  ┌─────────────────┐ ┌──────────────┐  │
+│  │ tags │  │media_tags│  │timetable_entries│ │calendar_days │  │
+│  └──────┘  └──────────┘  └─────────────────┘ └──────────────┘  │
+│                                          ┌────────────────────┐ │
+│                                          │attendance_records  │ │
+│                                          └────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -207,6 +244,7 @@ todo/
 │   ├── .env.example            # Template for environment setup
 │   ├── .gitignore
 │   ├── requirements.txt        # Python dependencies
+│   ├── uploads/                # Timetable images (git-ignored)
 │   ├── venv/                   # Virtual environment (git-ignored)
 │   └── app/
 │       ├── __init__.py
@@ -217,16 +255,23 @@ todo/
 │       ├── models.py           # SQLAlchemy ORM models
 │       ├── schemas.py          # Pydantic v2 request/response schemas
 │       ├── categorizer.py      # URL analysis & auto-categorization
+│       ├── timetable_ai.py     # Gemini Vision timetable extractor
 │       └── routers/
 │           ├── __init__.py
-│           ├── auth_router.py  # /api/auth/* endpoints
-│           ├── media_router.py # /api/media/* endpoints
-│           └── tags_router.py  # /api/tags/* endpoints
+│           ├── auth_router.py      # /api/auth/*
+│           ├── media_router.py     # /api/media/*
+│           ├── tags_router.py      # /api/tags/*
+│           ├── todos_router.py     # /api/todos/* + leaderboard
+│           ├── timetable_router.py # /api/timetable/*
+│           └── attendance_router.py# /api/attendance/*
 └── frontend/
     ├── index.html              # Landing page / Login
     ├── register.html           # Registration page
-    ├── dashboard.html          # Main media dashboard
+    ├── dashboard.html          # Main hub
     ├── education.html          # Education hub (topic-based view)
+    ├── todos.html              # To-Do List + Priority Leaderboard
+    ├── timetable.html          # Timetable Manager
+    ├── attendance.html         # Attendance Tracker
     ├── styles.css              # Design system & all styles
     └── app.js                  # Shared JS (API client, auth, utils)
 ```
@@ -279,6 +324,10 @@ DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/watchqueue
 SECRET_KEY=your-256-bit-secret-key-here
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# ── Gemini AI (for timetable extraction) ──────────────────────
+# Get a free key from https://aistudio.google.com
+GEMINI_API_KEY=your-google-ai-api-key-here
 ```
 
 ### Database Setup
@@ -309,7 +358,10 @@ Open your browser:
 |-----|------|
 | `http://localhost:8000` | 🏠 Landing page |
 | `http://localhost:8000/dashboard.html` | 📊 Dashboard |
+| `http://localhost:8000/todos.html` | 📝 To-Do + Leaderboard |
 | `http://localhost:8000/education.html` | 📚 Education Hub |
+| `http://localhost:8000/timetable.html` | 📅 Timetable |
+| `http://localhost:8000/attendance.html` | 📊 Attendance |
 | `http://localhost:8000/api/docs` | 📖 Swagger API docs |
 | `http://localhost:8000/api/redoc` | 📄 ReDoc API docs |
 
@@ -375,14 +427,15 @@ Authorization: Bearer <token>
 
 ### Media Items
 
-#### Add Media Item (with auto-categorization)
+#### Add Media Item (with auto-categorization + priority)
 ```http
 POST /api/media
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "url": "https://www.youtube.com/watch?v=aircAruvnKk"
+  "url": "https://www.youtube.com/watch?v=aircAruvnKk",
+  "priority_score": 8
 }
 ```
 **Response** `201 Created`:
@@ -397,6 +450,7 @@ Content-Type: application/json
   "platform": "youtube",
   "channel_name": "3Blue1Brown",
   "duration": 1140,
+  "priority_score": 8,
   "education_metadata": {
     "topic": "ai_ml",
     "course_name": null,
@@ -458,7 +512,8 @@ Content-Type: application/json
 {
   "status": "watching",
   "notes": "Great series, watching chapter 2 next",
-  "category": "education"
+  "category": "education",
+  "priority_score": 9
 }
 ```
 
@@ -530,6 +585,161 @@ Authorization: Bearer <token>
 ```http
 DELETE /api/media/{media_id}/tags/{tag_id}
 Authorization: Bearer <token>
+```
+
+---
+
+### To-Do & Leaderboard
+
+#### Create To-Do
+```http
+POST /api/todos
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Complete graph algorithms assignment",
+  "description": "BFS, DFS, Dijkstra's implementations",
+  "priority_score": 9,
+  "due_date": "2026-07-10"
+}
+```
+**Response** `201 Created`:
+```json
+{
+  "id": "uuid",
+  "title": "Complete graph algorithms assignment",
+  "description": "BFS, DFS, Dijkstra's implementations",
+  "priority_score": 9,
+  "status": "pending",
+  "due_date": "2026-07-10",
+  "created_at": "2026-07-05T10:00:00Z"
+}
+```
+
+#### Unified Priority Leaderboard
+```http
+GET /api/todos/leaderboard?type=all
+Authorization: Bearer <token>
+```
+**Query Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `type` | string | `all` (default), `todo`, `media` — filter by item type |
+
+**Response** `200 OK`:
+```json
+[
+  {
+    "rank": 1,
+    "item_type": "todo",
+    "id": "uuid",
+    "title": "Complete graph algorithms assignment",
+    "priority_score": 9,
+    "status": "pending",
+    "category": null,
+    "platform": null,
+    "thumbnail_url": null,
+    "due_date": "2026-07-10"
+  },
+  {
+    "rank": 2,
+    "item_type": "media",
+    "id": "uuid",
+    "title": "But what is a neural network?",
+    "priority_score": 8,
+    "status": "unwatched",
+    "category": "education",
+    "platform": "youtube",
+    "thumbnail_url": "https://i.ytimg.com/vi/...",
+    "due_date": null
+  }
+]
+```
+
+---
+
+### Timetable
+
+#### Upload Timetable Image (AI extraction)
+```http
+POST /api/timetable/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+file: [timetable.jpg]
+```
+**Response** `201 Created`:
+```json
+{
+  "message": "Timetable extracted successfully",
+  "entries": [
+    {"day_of_week": "monday", "subject": "Data Structures", "start_time": "09:00", "end_time": "10:00", "room": "LH-301"},
+    {"day_of_week": "monday", "subject": "AI & ML", "start_time": "10:00", "end_time": "11:00", "room": "LH-302"}
+  ]
+}
+```
+
+#### Get Full Timetable
+```http
+GET /api/timetable
+Authorization: Bearer <token>
+```
+
+#### Get Timetable for a Day
+```http
+GET /api/timetable/monday
+Authorization: Bearer <token>
+```
+
+---
+
+### Attendance
+
+#### Record Daily Attendance
+```http
+POST /api/attendance
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "date": "2026-07-05",
+  "records": [
+    {"subject": "Data Structures", "was_present": true},
+    {"subject": "AI & ML", "was_present": false}
+  ]
+}
+```
+
+#### Toggle Working Day
+```http
+PUT /api/attendance/calendar/2026-07-05
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "is_working_day": false,
+  "notes": "Independence Day holiday"
+}
+```
+
+#### Get Attendance Stats
+```http
+GET /api/attendance/stats
+Authorization: Bearer <token>
+```
+**Response** `200 OK`:
+```json
+{
+  "overall_percentage": 82.5,
+  "total_working_days": 40,
+  "total_attended": 33,
+  "by_subject": [
+    {"subject": "Data Structures", "total": 12, "attended": 11, "percentage": 91.7},
+    {"subject": "AI & ML", "total": 10, "attended": 7, "percentage": 70.0},
+    {"subject": "Web Development", "total": 8, "attended": 8, "percentage": 100.0}
+  ]
+}
 ```
 
 ---
@@ -640,6 +850,7 @@ If the content is classified as **education**, a second pass determines the spec
                                 │ platform        ENUM              │
                                 │ channel_name    VARCHAR(200)      │
                                 │ duration        INTEGER           │
+                                │ priority_score  INTEGER (1–10)    │
                                 │ notes           TEXT              │
                                 │ confidence      FLOAT             │
                                 │ created_at      TIMESTAMP         │
@@ -658,12 +869,34 @@ If the content is classified as **education**, a second pass determines the spec
     │ instructor   VARCHAR     │                  ▼
     └──────────────────────────┘    ┌──────────────────────────┐
                                     │         tags              │
-                                    ├──────────────────────────┤
-                                    │ id        UUID  PK       │
-                                    │ user_id   UUID  FK       │
-                                    │ name      VARCHAR(50)    │
-                                    │ color     VARCHAR(7)     │
-                                    └──────────────────────────┘
+┌──────────────────────────┐        ├──────────────────────────┤
+│         todos             │        │ id        UUID  PK       │
+├──────────────────────────┤        │ user_id   UUID  FK       │
+│ id           UUID  PK    │        │ name      VARCHAR(50)    │
+│ user_id      UUID  FK    │        │ color     VARCHAR(7)     │
+│ title        VARCHAR(200)│        └──────────────────────────┘
+│ description  TEXT        │
+│ priority_score INT (1-10)│  ┌──────────────────────────┐
+│ status       ENUM        │  │   timetable_entries       │
+│ due_date     DATE        │  ├──────────────────────────┤
+│ created_at   TIMESTAMP   │  │ id           UUID  PK    │
+└──────────────────────────┘  │ user_id      UUID  FK    │
+                               │ day_of_week  ENUM        │
+┌──────────────────────────┐  │ subject      VARCHAR     │
+│     calendar_days         │  │ start_time   TIME        │
+├──────────────────────────┤  │ end_time     TIME        │
+│ id           UUID  PK    │  │ room         VARCHAR     │
+│ user_id      UUID  FK    │  └──────────────────────────┘
+│ date         DATE        │
+│ is_working   BOOLEAN     │  ┌──────────────────────────┐
+│ notes        VARCHAR     │  │   attendance_records      │
+└──────────────────────────┘  ├──────────────────────────┤
+                               │ id           UUID  PK    │
+                               │ user_id      UUID  FK    │
+                               │ date         DATE        │
+                               │ subject      VARCHAR     │
+                               │ was_present  BOOLEAN     │
+                               └──────────────────────────┘
 ```
 
 ### Enum Values
@@ -683,6 +916,11 @@ CREATE TYPE mediastatus AS ENUM (
   'unwatched', 'watching', 'completed', 'dropped', 'on_hold'
 );
 
+-- To-do status
+CREATE TYPE todostatus AS ENUM (
+  'pending', 'in_progress', 'completed', 'cancelled'
+);
+
 -- Platform sources
 CREATE TYPE mediaplatform AS ENUM (
   'youtube', 'netflix', 'prime_video', 'disney_plus',
@@ -693,6 +931,12 @@ CREATE TYPE mediaplatform AS ENUM (
 CREATE TYPE educationtopic AS ENUM (
   'ai_ml', 'computer_science', 'information_science',
   'web_dev', 'mathematics', 'science', 'general'
+);
+
+-- Days of week
+CREATE TYPE dayofweek AS ENUM (
+  'monday', 'tuesday', 'wednesday', 'thursday',
+  'friday', 'saturday', 'sunday'
 );
 ```
 
@@ -711,18 +955,39 @@ CREATE TYPE educationtopic AS ENUM (
 - Matching dark theme design
 
 ### 📊 Dashboard (`dashboard.html`)
-The main experience:
-- **Quick Add bar** — paste URL → preview categorization → one-click add
-- **Stats overview** — animated counters for total, watching, completed
+The main hub with navigation to all sections:
+- **Quick Add bar** — paste URL → auto-categorize → assign priority → add
+- **Stats overview** — animated counters for total, top priority, today's classes, attendance %
 - **Category tabs** — All | 🎬 Movies | 📚 Education | 🎮 Entertainment | 📖 Books
-- **Media cards** — glassmorphic cards with thumbnails, platform badges, status dropdowns
-- **Filters** — filter by status, platform, category, search
+- **Media cards** — glassmorphic cards with thumbnails, platform badges, priority score, status dropdowns
+- **Navigation** — sidebar links to To-Do, Timetable, Attendance, Education Hub
+
+### 📝 To-Do + Leaderboard (`todos.html`)
+Unified view combining normal tasks AND media items:
+- **Add to-do form** — title, description, priority score (1–10 slider), due date
+- **Add media shortcut** — paste URL → auto-categorize → assign priority
+- **Leaderboard** — ALL items ranked by priority with 🥇🥈🥉 badges, type badges (📝 Task, 🎬 Movie, 📚 Education, etc.), color-coded priority
+- **Filter tabs** — All | 📝 Tasks Only | 🎬 Media Only
 
 ### 📚 Education Hub (`education.html`)
 - Topic-based sections (AI, CS, Web Dev, Math, etc.)
 - Progress tracking per topic
 - Class-like organization with completion percentages
 - Instructor/channel grouping
+
+### 📅 Timetable (`timetable.html`)
+- **Drag-and-drop upload** — upload timetable photo for AI extraction
+- **Preview & confirm** — review extracted subjects before saving
+- **Weekly grid view** — Mon–Sat with subject slots, times, rooms
+- **Today's classes** — highlighted section showing what's on today
+- **Edit mode** — click any slot to manually adjust
+
+### 📊 Attendance (`attendance.html`)
+- **Today's attendance** — subject list with present/absent toggle buttons
+- **Calendar view** — monthly grid color-coded by attendance
+- **Working day toggle** — click any date to mark holidays
+- **Subject stats** — per-subject attendance % with progress bars
+- **Alerts** — warnings for subjects below 75%
 
 ---
 
@@ -742,6 +1007,10 @@ The main experience:
 - [ ] Backend API with FastAPI
 - [ ] JWT authentication
 - [ ] Auto-categorization engine with yt-dlp
+- [ ] Unified to-do list with priority scoring
+- [ ] Priority leaderboard (media + tasks combined)
+- [ ] AI timetable extraction with Gemini Vision
+- [ ] Attendance tracker with calendar view
 - [ ] PostgreSQL models and schemas
 - [ ] Frontend dashboard with glassmorphism UI
 - [ ] Education hub with topic-based views
