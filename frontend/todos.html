@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WatchQueue — Priority Leaderboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="page-container">
+        <aside id="nav-sidebar" class="nav-sidebar"></aside>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title">Priority Leaderboard</h1>
+                    <p style="color: var(--text-muted); margin-top: 0.5rem;">Tasks and Media combined, ranked by priority.</p>
+                </div>
+            </header>
+            
+            <div class="grid grid-2" style="margin-bottom: 2rem;">
+                <!-- Add Task Form -->
+                <div class="card">
+                    <h3 style="margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">Add New Task</h3>
+                    <form id="form-task">
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input type="text" id="task-title" class="input" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Description (optional)</label>
+                            <input type="text" id="task-desc" class="input">
+                        </div>
+                        <div class="grid grid-2">
+                            <div class="form-group">
+                                <label>Priority: <span id="task-prio-val">5</span>/10</label>
+                                <input type="range" id="task-prio" min="1" max="10" value="5">
+                            </div>
+                            <div class="form-group">
+                                <label>Due Date (optional)</label>
+                                <input type="date" id="task-date" class="input" style="padding: 0.5rem;">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width:100%">Add Task</button>
+                    </form>
+                </div>
+                
+                <!-- Add Media Form -->
+                <div class="card">
+                    <h3 style="margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">Add Media</h3>
+                    <form id="form-media">
+                        <div class="form-group">
+                            <label>URL</label>
+                            <input type="url" id="media-url" class="input" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Priority: <span id="media-prio-val">5</span>/10</label>
+                            <input type="range" id="media-prio" min="1" max="10" value="5">
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="button" id="btn-analyze" class="btn btn-secondary" style="flex:1">Analyze</button>
+                            <button type="submit" id="btn-media-add" class="btn btn-primary" style="flex:2; display:none;">Add Media</button>
+                        </div>
+                        <div id="media-preview" style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);"></div>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="tabs" id="filter-tabs">
+                <button class="tab active" data-type="all">All Items</button>
+                <button class="tab" data-type="todo">Tasks Only</button>
+                <button class="tab" data-type="media">Media Only</button>
+            </div>
+            
+            <div class="card">
+                <div id="leaderboard" class="leaderboard-list">
+                    <div class="spinner" style="margin: 2rem auto;"></div>
+                </div>
+            </div>
+            
+            <div class="card" style="margin-top: 2rem;">
+                <h3 style="margin-bottom: 1rem; color: var(--text-muted); cursor: pointer;" id="toggle-completed">
+                    Completed Items <span>▼</span>
+                </h3>
+                <div id="completed-list" class="leaderboard-list" style="display: none; opacity: 0.5;"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!Auth.requireAuth()) return;
+            renderNav('todos');
+            
+            let currentFilter = 'all';
+            
+            const tpVal = document.getElementById('task-prio-val');
+            document.getElementById('task-prio').addEventListener('input', e => tpVal.textContent = e.target.value);
+            
+            const mpVal = document.getElementById('media-prio-val');
+            document.getElementById('media-prio').addEventListener('input', e => mpVal.textContent = e.target.value);
+            
+            // Add Task
+            document.getElementById('form-task').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const btn = e.target.querySelector('button[type="submit"]');
+                const title = document.getElementById('task-title').value;
+                const desc = document.getElementById('task-desc').value;
+                const prio = document.getElementById('task-prio').value;
+                const due = document.getElementById('task-date').value;
+                
+                try {
+                    btn.disabled = true;
+                    await api('/todos', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            title,
+                            description: desc || null,
+                            priority_score: parseInt(prio),
+                            due_date: due || null
+                        })
+                    });
+                    showToast('Task added');
+                    e.target.reset();
+                    tpVal.textContent = '5';
+                    loadLeaderboard();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+            
+            // Add Media Analyze
+            const btnAnalyze = document.getElementById('btn-analyze');
+            const btnMediaAdd = document.getElementById('btn-media-add');
+            const mediaUrl = document.getElementById('media-url');
+            const preview = document.getElementById('media-preview');
+            
+            btnAnalyze.addEventListener('click', async () => {
+                const url = mediaUrl.value.trim();
+                if(!url) return;
+                try {
+                    btnAnalyze.disabled = true;
+                    btnAnalyze.textContent = '...';
+                    const res = await api(`/media/analyze?url=${encodeURIComponent(url)}`, { method: 'POST' });
+                    preview.innerHTML = `<strong style="color:white">${res.title}</strong><br>Category: ${res.category}`;
+                    btnAnalyze.style.display = 'none';
+                    btnMediaAdd.style.display = 'block';
+                } catch(e) {
+                    showToast('Analysis failed', 'error');
+                } finally {
+                    btnAnalyze.disabled = false;
+                    btnAnalyze.textContent = 'Analyze';
+                }
+            });
+            
+            mediaUrl.addEventListener('input', () => {
+                btnAnalyze.style.display = 'block';
+                btnMediaAdd.style.display = 'none';
+                preview.innerHTML = '';
+            });
+            
+            // Add Media Submit
+            document.getElementById('form-media').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const url = mediaUrl.value;
+                const prio = document.getElementById('media-prio').value;
+                try {
+                    btnMediaAdd.disabled = true;
+                    await api('/media', {
+                        method: 'POST',
+                        body: JSON.stringify({ url, priority_score: parseInt(prio) })
+                    });
+                    showToast('Media added');
+                    e.target.reset();
+                    mpVal.textContent = '5';
+                    btnAnalyze.style.display = 'block';
+                    btnMediaAdd.style.display = 'none';
+                    preview.innerHTML = '';
+                    loadLeaderboard();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                } finally {
+                    btnMediaAdd.disabled = false;
+                }
+            });
+            
+            // Filter
+            document.getElementById('filter-tabs').addEventListener('click', (e) => {
+                if (e.target.classList.contains('tab')) {
+                    document.querySelectorAll('#filter-tabs .tab').forEach(t => t.classList.remove('active'));
+                    e.target.classList.add('active');
+                    currentFilter = e.target.dataset.type;
+                    loadLeaderboard();
+                }
+            });
+            
+            // Toggle completed
+            const completedList = document.getElementById('completed-list');
+            document.getElementById('toggle-completed').addEventListener('click', () => {
+                const isHidden = completedList.style.display === 'none';
+                completedList.style.display = isHidden ? 'flex' : 'none';
+            });
+            
+            // Load Leaderboard
+            async function loadLeaderboard() {
+                const lb = document.getElementById('leaderboard');
+                lb.innerHTML = '<div class="spinner" style="margin: 2rem auto;"></div>';
+                
+                try {
+                    const entries = await api(`/todos/leaderboard?type=${currentFilter}`);
+                    
+                    const active = entries.filter(e => e.status !== 'completed');
+                    const completed = entries.filter(e => e.status === 'completed');
+                    
+                    if (active.length === 0) {
+                        lb.innerHTML = `<div class="empty-state" style="padding:2rem"><div class="empty-icon">🏆</div><p>No active items.</p></div>`;
+                    } else {
+                        lb.innerHTML = active.map(renderItem).join('');
+                    }
+                    
+                    completedList.innerHTML = completed.map(renderItem).join('');
+                    
+                    attachListeners(lb);
+                    attachListeners(completedList);
+                    
+                } catch (e) {
+                    lb.innerHTML = `<div style="color:red">Failed to load leaderboard</div>`;
+                }
+            }
+            
+            function renderItem(item) {
+                const isTask = item.item_type === 'todo';
+                const icon = isTask ? '📝' : '🎬';
+                const typeBadge = `<span class="badge ${isTask ? 'badge-other' : 'badge-movie'}">${icon} ${isTask ? 'Task' : 'Media'}</span>`;
+                const prioColor = getPriorityColor(item.priority_score);
+                const rankClass = item.rank <= 3 && item.status !== 'completed' ? `rank-${item.rank}` : '';
+                const rankDisplay = item.status === 'completed' ? '✓' : (item.rank <= 3 ? ['🥇','🥈','🥉'][item.rank-1] : `#${item.rank}`);
+                
+                const toggleBtn = item.status === 'completed' 
+                    ? `<button class="btn btn-secondary btn-toggle" data-id="${item.id}" data-type="${item.item_type}" data-action="reopen">Reopen</button>`
+                    : `<button class="btn btn-primary btn-toggle" data-id="${item.id}" data-type="${item.item_type}" data-action="complete">Complete</button>`;
+                    
+                return `
+                    <div class="leaderboard-item" style="border-bottom: 1px solid var(--border); ${item.status === 'completed' ? 'text-decoration: line-through;' : ''}">
+                        <div class="rank ${rankClass}">${rankDisplay}</div>
+                        ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" style="width:60px; height:40px; object-fit:cover; border-radius:4px; margin-right:1rem;">` : ''}
+                        <div class="lb-content">
+                            <div class="lb-title">${item.title}</div>
+                            <div class="lb-meta">
+                                ${typeBadge}
+                                ${item.category ? `<span class="badge" style="background:var(--glass)">${item.category}</span>` : ''}
+                                ${item.due_date ? `<span style="color:var(--text-muted)">📅 ${formatDate(item.due_date)}</span>` : ''}
+                            </div>
+                        </div>
+                        <div style="margin-right: 1.5rem; display:flex; flex-direction:column; align-items:center;">
+                            <span style="font-size: 0.7rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.25rem;">Score</span>
+                            <span class="priority-badge" style="background: ${prioColor}; box-shadow: 0 0 10px ${prioColor}; width: 32px; height: 32px; font-size: 1rem;">${item.priority_score}</span>
+                        </div>
+                        <div class="lb-actions">
+                            ${toggleBtn}
+                            <button class="btn btn-danger btn-del" data-id="${item.id}" data-type="${item.item_type}" style="padding: 0.6rem;">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            function attachListeners(container) {
+                container.querySelectorAll('.btn-toggle').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const id = e.target.dataset.id;
+                        const type = e.target.dataset.type;
+                        const action = e.target.dataset.action;
+                        const status = action === 'complete' ? 'completed' : (type === 'todo' ? 'pending' : 'unwatched');
+                        const endpoint = type === 'todo' ? `/todos/${id}` : `/media/${id}`;
+                        
+                        try {
+                            await api(endpoint, {
+                                method: 'PUT',
+                                body: JSON.stringify({ status })
+                            });
+                            loadLeaderboard();
+                        } catch (err) {
+                            showToast(err.message, 'error');
+                        }
+                    });
+                });
+                
+                container.querySelectorAll('.btn-del').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        if(!confirm('Delete item?')) return;
+                        const id = e.target.closest('button').dataset.id;
+                        const type = e.target.closest('button').dataset.type;
+                        const endpoint = type === 'todo' ? `/todos/${id}` : `/media/${id}`;
+                        
+                        try {
+                            await api(endpoint, { method: 'DELETE' });
+                            showToast('Deleted');
+                            loadLeaderboard();
+                        } catch (err) {
+                            showToast(err.message, 'error');
+                        }
+                    });
+                });
+            }
+            
+            loadLeaderboard();
+        });
+    </script>
+</body>
+</html>
