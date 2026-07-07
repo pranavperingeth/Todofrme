@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WatchQueue — Attendance Tracker</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .att-toggle {
+            display: inline-flex;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 4px;
+            gap: 4px;
+        }
+        .att-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .att-btn.active-present { background: rgba(16, 185, 129, 0.2); color: #10B981; border-color: rgba(16, 185, 129, 0.4); }
+        .att-btn.active-absent { background: rgba(239, 68, 68, 0.2); color: #EF4444; border-color: rgba(239, 68, 68, 0.4); }
+        
+        .gauge-container {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: conic-gradient(var(--primary-gradient) var(--pct), rgba(255,255,255,0.05) 0);
+            position: relative;
+            margin: 0 auto;
+        }
+        .gauge-inner {
+            width: 120px;
+            height: 120px;
+            background: var(--bg);
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .gauge-val { font-size: 2rem; font-weight: 700; }
+        
+        .cal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+        .cal-days-header { display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.5rem; }
+        .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:0.25rem; }
+        .cal-day {
+            aspect-ratio: 1;
+            display: flex; align-items:center; justify-content:center;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            background: var(--glass);
+        }
+        .cal-day:hover { background: rgba(255,255,255,0.15); }
+        .cal-working { border: 1px solid rgba(255,255,255,0.2); }
+        .cal-nonworking { opacity: 0.3; background: transparent; border: 1px dashed var(--border); }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <aside id="nav-sidebar" class="nav-sidebar"></aside>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title">Attendance Tracker</h1>
+                    <p style="color: var(--text-muted); margin-top: 0.5rem;">Track and maintain your 75% goal</p>
+                </div>
+            </header>
+            
+            <div class="grid grid-3">
+                <!-- Today's Attendance -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3 style="margin-bottom: 1.5rem;">Today's Classes</h3>
+                    
+                    <div id="today-container">
+                        <div class="spinner" style="margin: 2rem auto;"></div>
+                    </div>
+                </div>
+                
+                <!-- Overall Stats -->
+                <div class="card" style="text-align: center;">
+                    <h3 style="margin-bottom: 2rem;">Overall Attendance</h3>
+                    
+                    <div id="gauge" class="gauge-container" style="--pct: 0%;">
+                        <div class="gauge-inner">
+                            <div id="gauge-val" class="gauge-val">0%</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 2rem; color: var(--text-muted); font-size: 0.9rem;">
+                        <span id="stat-days">0</span> working days tracked
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-2" style="margin-top: 2rem;">
+                <!-- Per Subject -->
+                <div class="card">
+                    <h3 style="margin-bottom: 1.5rem;">By Subject</h3>
+                    <div id="subjects-container" style="display:flex; flex-direction:column; gap:1.25rem;">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+                
+                <!-- Calendar View -->
+                <div class="card">
+                    <div class="cal-header">
+                        <h3 id="cal-month-label">Calendar</h3>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button class="btn btn-secondary" style="padding:0.25rem 0.75rem;" id="cal-prev">&lt;</button>
+                            <button class="btn btn-secondary" style="padding:0.25rem 0.75rem;" id="cal-next">&gt;</button>
+                        </div>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;">Click a day to toggle working / non-working day.</p>
+                    
+                    <div class="cal-days-header">
+                        <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
+                    </div>
+                    <div id="calendar-grid" class="cal-grid"></div>
+                </div>
+            </div>
+            
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!Auth.requireAuth()) return;
+            renderNav('attendance');
+            
+            let todayClasses = [];
+            
+            async function loadData() {
+                try {
+                    const [todayData, statsData] = await Promise.all([
+                        api('/attendance/today'),
+                        api('/attendance/stats')
+                    ]);
+                    todayClasses = todayData;
+                    renderToday(todayData);
+                    renderStats(statsData);
+                } catch (e) {
+                    showToast('Failed to load data', 'error');
+                }
+            }
+            
+            // Render Today
+            function renderToday(data) {
+                const container = document.getElementById('today-container');
+                if (data.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="padding: 2rem;">
+                            <div class="empty-icon">🏖️</div>
+                            <h4>No classes today!</h4>
+                            <p>Or marked as a non-working day.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '<div style="display:flex; flex-direction:column; gap:1rem; margin-bottom: 2rem;">';
+                data.forEach((c, i) => {
+                    html += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); padding:1rem; border-radius:8px;">
+                            <div style="font-weight:500;">${c.subject}</div>
+                            <div class="att-toggle" data-idx="${i}">
+                                <button type="button" class="att-btn btn-present ${c.was_present === true ? 'active-present' : ''}">Present</button>
+                                <button type="button" class="att-btn btn-absent ${c.was_present === false ? 'active-absent' : ''}">Absent</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                html += `<button id="btn-save-today" class="btn btn-primary">Save Today's Attendance</button>`;
+                
+                container.innerHTML = html;
+                
+                // Toggle Logic
+                container.querySelectorAll('.att-toggle').forEach(t => {
+                    const idx = t.dataset.idx;
+                    const btnP = t.querySelector('.btn-present');
+                    const btnA = t.querySelector('.btn-absent');
+                    
+                    btnP.addEventListener('click', () => {
+                        btnP.classList.add('active-present');
+                        btnA.classList.remove('active-absent');
+                        todayClasses[idx].was_present = true;
+                    });
+                    
+                    btnA.addEventListener('click', () => {
+                        btnA.classList.add('active-absent');
+                        btnP.classList.remove('active-present');
+                        todayClasses[idx].was_present = false;
+                    });
+                });
+                
+                // Save logic
+                document.getElementById('btn-save-today').addEventListener('click', async () => {
+                    // Validation
+                    const missing = todayClasses.filter(c => c.was_present === null);
+                    if (missing.length > 0) {
+                        return showToast('Please mark all subjects as present or absent', 'error');
+                    }
+                    
+                    const dateStr = new Date().toISOString().split('T')[0];
+                    const records = todayClasses.map(c => ({ subject: c.subject, was_present: c.was_present }));
+                    
+                    try {
+                        await api('/attendance', {
+                            method: 'POST',
+                            body: JSON.stringify({ date: dateStr, records })
+                        });
+                        showToast('Attendance saved!');
+                        loadData();
+                    } catch(e) {
+                        showToast(e.message, 'error');
+                    }
+                });
+            }
+            
+            // Render Stats
+            function renderStats(stats) {
+                // Gauge
+                const gauge = document.getElementById('gauge');
+                const val = document.getElementById('gauge-val');
+                gauge.style.setProperty('--pct', `${stats.overall_percentage}%`);
+                val.textContent = `${stats.overall_percentage}%`;
+                
+                document.getElementById('stat-days').textContent = stats.total_working_days;
+                
+                // Per Subject
+                const container = document.getElementById('subjects-container');
+                if (stats.by_subject.length === 0) {
+                    container.innerHTML = `<div style="color:var(--text-muted); text-align:center; padding:2rem;">No data yet.</div>`;
+                    return;
+                }
+                
+                container.innerHTML = stats.by_subject.map(s => {
+                    const isWarn = s.percentage < 75;
+                    return `
+                        <div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                                <span style="font-weight:500;">${s.subject}</span>
+                                <div>
+                                    <span style="color:${isWarn ? '#EF4444' : '#10B981'}; font-weight:600;">${s.percentage}%</span>
+                                    <span style="color:var(--text-muted); font-size:0.8rem; margin-left:0.5rem;">(${s.attended}/${s.total})</span>
+                                </div>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-bar ${isWarn ? 'progress-warning' : ''}" style="width: ${s.percentage}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // Calendar
+            let calDate = new Date();
+            
+            async function loadCalendar() {
+                const year = calDate.getFullYear();
+                const month = calDate.getMonth() + 1;
+                
+                const monthName = calDate.toLocaleString('default', { month: 'long' });
+                document.getElementById('cal-month-label').textContent = `${monthName} ${year}`;
+                
+                try {
+                    const days = await api(`/attendance/calendar?month=${month}&year=${year}`);
+                    
+                    // Render Grid
+                    const grid = document.getElementById('calendar-grid');
+                    grid.innerHTML = '';
+                    
+                    // First day offset (1=Mon, 7=Sun)
+                    let firstDay = new Date(year, month - 1, 1).getDay();
+                    if (firstDay === 0) firstDay = 7; // Convert Sun(0) to 7
+                    
+                    // Padding days
+                    for (let i = 1; i < firstDay; i++) {
+                        grid.innerHTML += `<div></div>`;
+                    }
+                    
+                    days.forEach(d => {
+                        const dayNum = parseInt(d.date.split('-')[2]);
+                        const isWorking = d.is_working_day;
+                        
+                        const el = document.createElement('div');
+                        el.className = `cal-day ${isWorking ? 'cal-working' : 'cal-nonworking'}`;
+                        el.textContent = dayNum;
+                        
+                        el.addEventListener('click', async () => {
+                            try {
+                                await api(`/attendance/calendar/${d.date}`, {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ is_working_day: !isWorking })
+                                });
+                                loadCalendar();
+                                if (d.date === new Date().toISOString().split('T')[0]) {
+                                    loadData(); // Reload today if toggling today
+                                }
+                            } catch(e) {
+                                showToast(e.message, 'error');
+                            }
+                        });
+                        
+                        grid.appendChild(el);
+                    });
+                    
+                } catch(e) {
+                    showToast('Failed to load calendar', 'error');
+                }
+            }
+            
+            document.getElementById('cal-prev').addEventListener('click', () => {
+                calDate.setMonth(calDate.getMonth() - 1);
+                loadCalendar();
+            });
+            
+            document.getElementById('cal-next').addEventListener('click', () => {
+                calDate.setMonth(calDate.getMonth() + 1);
+                loadCalendar();
+            });
+            
+            loadData();
+            loadCalendar();
+        });
+    </script>
+</body>
+</html>
