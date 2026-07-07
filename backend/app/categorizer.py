@@ -218,6 +218,24 @@ async def fetch_basic_metadata(url: str) -> dict:
         return {"title": None, "description": None}
 
 
+async def fetch_youtube_oembed(url: str) -> dict:
+    """Fallback to YouTube oEmbed API if yt-dlp fails."""
+    try:
+        oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(oembed_url)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "title": data.get("title"),
+                    "channel": data.get("author_name"),
+                    "thumbnail": data.get("thumbnail_url")
+                }
+    except Exception as e:
+        print(f"oEmbed fetch failed: {e}")
+    return {}
+
+
 async def analyze_url(url: str) -> dict:
     platform = detect_platform(url)
     
@@ -252,13 +270,23 @@ async def analyze_url(url: str) -> dict:
         print(f"Error extracting yt info: {e}")
         yt_category = None
 
-    # Fallback to basic HTML parsing if yt-dlp failed to get a title
+    # Fallback if yt-dlp failed to get a title
     if not result["title"]:
-        basic_meta = await fetch_basic_metadata(url)
-        if basic_meta["title"]:
-            result["title"] = basic_meta["title"]
-        if basic_meta["description"] and not result["description"]:
-            result["description"] = basic_meta["description"][:500]
+        # Try YouTube oEmbed first for YouTube links
+        if platform == MediaPlatform.youtube.value:
+            oembed_data = await fetch_youtube_oembed(url)
+            if oembed_data.get("title"):
+                result["title"] = oembed_data["title"]
+                result["channel"] = oembed_data.get("channel") or result["channel"]
+                result["thumbnail"] = oembed_data.get("thumbnail") or result["thumbnail"]
+
+        # If still no title, try generic HTML scraper
+        if not result["title"]:
+            basic_meta = await fetch_basic_metadata(url)
+            if basic_meta["title"]:
+                result["title"] = basic_meta["title"]
+            if basic_meta["description"] and not result["description"]:
+                result["description"] = basic_meta["description"][:500]
 
     # Platform overrides for obvious cases
     if platform in [MediaPlatform.netflix.value, MediaPlatform.prime_video.value, MediaPlatform.disney_plus.value, MediaPlatform.hotstar.value]:
