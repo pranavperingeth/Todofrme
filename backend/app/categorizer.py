@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import httpx
+import re
 import urllib.parse
 from typing import Optional, Tuple
 
@@ -186,6 +188,36 @@ def extract_yt_info(url: str) -> dict:
         return ydl.extract_info(url, download=False)
 
 
+async def fetch_basic_metadata(url: str) -> dict:
+    """Fallback to fetch basic HTML metadata if yt-dlp fails."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            response = await client.get(url, headers=headers)
+            html = response.text
+            
+            title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
+            title = title_match.group(1).strip() if title_match else None
+            
+            if not title:
+                og_title = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\'](.*?)["\']', html, re.IGNORECASE)
+                if og_title: title = og_title.group(1).strip()
+                
+            desc_match = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']', html, re.IGNORECASE | re.DOTALL)
+            if not desc_match:
+                desc_match = re.search(r'<meta[^>]*content=["\'](.*?)["\'][^>]*name=["\']description["\']', html, re.IGNORECASE | re.DOTALL)
+            
+            desc = desc_match.group(1).strip() if desc_match else None
+            if not desc:
+                og_desc = re.search(r'<meta[^>]*property=["\']og:description["\'][^>]*content=["\'](.*?)["\']', html, re.IGNORECASE)
+                if og_desc: desc = og_desc.group(1).strip()
+                
+            return {"title": title, "description": desc}
+    except Exception as e:
+        print(f"Basic metadata fetch failed: {e}")
+        return {"title": None, "description": None}
+
+
 async def analyze_url(url: str) -> dict:
     platform = detect_platform(url)
     
@@ -219,6 +251,14 @@ async def analyze_url(url: str) -> dict:
     except Exception as e:
         print(f"Error extracting yt info: {e}")
         yt_category = None
+
+    # Fallback to basic HTML parsing if yt-dlp failed to get a title
+    if not result["title"]:
+        basic_meta = await fetch_basic_metadata(url)
+        if basic_meta["title"]:
+            result["title"] = basic_meta["title"]
+        if basic_meta["description"] and not result["description"]:
+            result["description"] = basic_meta["description"][:500]
 
     # Platform overrides for obvious cases
     if platform in [MediaPlatform.netflix.value, MediaPlatform.prime_video.value, MediaPlatform.disney_plus.value, MediaPlatform.hotstar.value]:
