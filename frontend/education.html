@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WatchQueue — Education Hub</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="page-container">
+        <aside id="nav-sidebar" class="nav-sidebar"></aside>
+        
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title">Education Hub</h1>
+                    <p style="color: var(--text-muted); margin-top: 0.5rem;">Track your learning progress across topics</p>
+                </div>
+            </header>
+            
+            <div id="topics-container">
+                <div class="spinner" style="margin: 3rem auto;"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!Auth.requireAuth()) return;
+            renderNav('education');
+            
+            const TOPIC_NAMES = {
+                'ai_ml': 'AI & Machine Learning',
+                'computer_science': 'Computer Science',
+                'information_science': 'Information Science',
+                'web_dev': 'Web Development',
+                'mathematics': 'Mathematics',
+                'science': 'Science',
+                'general': 'General Learning'
+            };
+            
+            const TOPIC_ICONS = {
+                'ai_ml': '🤖',
+                'computer_science': '💻',
+                'information_science': '📊',
+                'web_dev': '🌐',
+                'mathematics': '📐',
+                'science': '🔬',
+                'general': '📚'
+            };
+            
+            async function loadEducation() {
+                try {
+                    const container = document.getElementById('topics-container');
+                    const items = await api('/media?category=education&limit=100');
+                    
+                    if (items.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-icon">🎓</div>
+                                <h3>No education items yet</h3>
+                                <p>Add educational videos or courses from the dashboard.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    // Group by topic
+                    const grouped = {};
+                    items.forEach(item => {
+                        // Extract topic from tags or education_metadata if we joined it in the future
+                        // For now we will rely on fetching individual items or if we had it in ListOut
+                        // Wait, education_metadata isn't in ListOut. Let's group by checking if there's a topic tag or default to 'general'
+                        let topic = 'general';
+                        
+                        // We need to fetch full items to get education_metadata, but for simplicity let's do a trick:
+                        // The backend /media returns items with tags, but we also want education metadata. 
+                        // Actually, I can fetch /media/stats to get topics count, but to display them I need full items.
+                        // I will group them by fetching each item's detail or just assuming we can get the topic.
+                        // Since I can't change backend right now easily without another file write, I will just display them in one grid or group by something else.
+                        // Wait, I can just fetch all of them, the backend ListOut DOES NOT have education_metadata. 
+                        // But wait! If I just fetch them all, I can display them.
+                        // Actually, I'll group them by category for now, or just show them in one list.
+                        // But the prompt said: "Group items by education_metadata.topic"
+                        // Since I wrote MediaItemListOut to NOT have education_metadata, I have a problem.
+                        // Let's modify the frontend to just do Promise.all on the IDs to get the full item, or just display them as a flat list if topic is missing.
+                        grouped[topic] = grouped[topic] || [];
+                        grouped[topic].push(item);
+                    });
+                    
+                    // Since we can't efficiently group without education_metadata, let's fetch details for all education items.
+                    const fullItems = await Promise.all(items.map(i => api(`/media/${i.id}`)));
+                    
+                    const groupedFull = {};
+                    fullItems.forEach(item => {
+                        let topic = 'general';
+                        if (item.education_metadata && item.education_metadata.topic) {
+                            topic = item.education_metadata.topic;
+                        }
+                        groupedFull[topic] = groupedFull[topic] || [];
+                        groupedFull[topic].push(item);
+                    });
+                    
+                    let html = '';
+                    
+                    for (const [topic, topicItems] of Object.entries(groupedFull)) {
+                        const name = TOPIC_NAMES[topic] || topic;
+                        const icon = TOPIC_ICONS[topic] || '📚';
+                        
+                        const completed = topicItems.filter(i => i.status === 'completed').length;
+                        const total = topicItems.length;
+                        const pct = Math.round((completed / total) * 100);
+                        
+                        html += `
+                            <div class="card" style="margin-bottom: 2rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                                    <div style="display: flex; align-items: center; gap: 1rem;">
+                                        <div style="font-size: 2rem;">${icon}</div>
+                                        <div>
+                                            <h2 style="font-size: 1.25rem;">${name}</h2>
+                                            <div style="font-size: 0.85rem; color: var(--text-muted);">${total} items</div>
+                                        </div>
+                                    </div>
+                                    <div style="width: 300px; text-align: right;">
+                                        <div style="font-size: 0.85rem; margin-bottom: 0.25rem;">${pct}% Completed</div>
+                                        <div class="progress-container">
+                                            <div class="progress-bar" style="width: ${pct}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-4">
+                                    ${topicItems.map(item => `
+                                        <div class="card media-card" style="background: rgba(0,0,0,0.2);">
+                                            <img src="${item.thumbnail_url || 'https://via.placeholder.com/300x160?text=No+Thumbnail'}" class="media-card-img" style="height: 120px;">
+                                            <div class="media-card-content" style="padding: 1rem;">
+                                                <h4 style="font-size: 0.95rem; margin-bottom: 0.5rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"><a href="${item.url}" target="_blank">${item.title || item.url}</a></h4>
+                                                <div style="display: flex; justify-content: space-between; margin-top: auto; align-items: center;">
+                                                    <span class="badge" style="background: var(--glass); font-size: 0.7rem;">${item.status}</span>
+                                                    <span class="priority-badge" style="background: ${getPriorityColor(item.priority_score)}; width: 20px; height: 20px; font-size: 0.65rem;">${item.priority_score}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    container.innerHTML = html;
+                } catch (e) {
+                    showToast('Failed to load education hub', 'error');
+                }
+            }
+            
+            loadEducation();
+        });
+    </script>
+</body>
+</html>
