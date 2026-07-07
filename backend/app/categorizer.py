@@ -1,8 +1,12 @@
 import asyncio
+import json
+import os
 import urllib.parse
 from typing import Optional, Tuple
 
 import yt_dlp
+from google import genai
+from google.genai import types
 
 from app.models import EducationTopic, MediaCategory, MediaPlatform
 
@@ -41,7 +45,8 @@ def detect_platform(url: str) -> str:
         return MediaPlatform.other.value
 
 
-def classify_content(title: str, description: str, tags: list[str], channel: str, yt_category: str, duration: int) -> Tuple[str, Optional[str], float]:
+def heuristic_classify(title: str, description: str, tags: list[str], channel: str, yt_category: str, duration: int) -> Tuple[str, Optional[str], float]:
+    """Fallback heuristic classification."""
     title_lower = (title or "").lower()
     desc_lower = (description or "").lower()
     channel_lower = (channel or "").lower()
@@ -52,7 +57,6 @@ def classify_content(title: str, description: str, tags: list[str], channel: str
     confidence = 0.5
     category = None
     
-    # YouTube category matching
     yt_cat_lower = (yt_category or "").lower()
     if yt_cat_lower in ['education', 'howto & style', 'science & technology']:
         category = MediaCategory.education.value
@@ -67,26 +71,23 @@ def classify_content(title: str, description: str, tags: list[str], channel: str
         category = MediaCategory.article.value
         confidence += 0.2
     
-    # Channel check
     if channel_lower in KNOWN_EDUCATION_CHANNELS:
         category = MediaCategory.education.value
         confidence += 0.1
         
-    # Edu signals check
     edu_signal_count = sum(1 for s in EDUCATION_SIGNALS if s in text_corpus)
     if edu_signal_count > 0:
         if not category:
             category = MediaCategory.education.value
         confidence += min(0.3, edu_signal_count * 0.1)
         
-    if duration and duration > 2700: # 45 min
+    if duration and duration > 2700:
         if category == MediaCategory.education.value:
             confidence += 0.1
     elif duration and duration < 60:
         if not category:
             category = MediaCategory.entertainment.value
 
-    # If still no category, check keywords for education topic
     edu_topic = None
     best_topic_score = 0
     for topic, keywords in TOPIC_KEYWORDS.items():
@@ -108,6 +109,70 @@ def classify_content(title: str, description: str, tags: list[str], channel: str
 
     confidence = min(1.0, confidence)
     return category, edu_topic, confidence
+
+
+async def ai_classify(url: str, title: str, description: str, tags: list[str], channel: str) -> Optional[Tuple[str, Optional[str], float]]:
+    """Use Gemini AI to classify the media content."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "your_gemini_api_key_here":
+        return None
+        
+    client = genai.Client(api_key=api_key)
+    
+    prompt = f"""
+    Analyze the following media item to categorize it.
+    
+    URL: {url}
+    Title: {title or 'Unknown'}
+    Channel/Uploader: {channel or 'Unknown'}
+    Description: {description or 'None'}
+    Tags: {', '.join(tags) if tags else 'None'}
+    
+    Instructions:
+    1. Determine the category strictly from this list: "movie", "education", "entertainment", "book", "podcast", "article", "other".
+    2. If the category is "education", determine the most fitting education_topic from this list: "ai_ml", "computer_science", "information_science", "web_dev", "mathematics", "science", "general". If not education, set to null.
+    3. Provide a confidence score between 0.0 and 1.0.
+    
+    Output exactly as JSON with keys: "category", "education_topic", "confidence". Do not include markdown formatting or code blocks.
+    """
+    
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.1
+                )
+            )
+        )
+        
+        text = response.text.strip()
+        if text.startswith('```json'):
+            text = text[7:]
+        if text.endswith('```'):
+            text = text[:-3]
+        text = text.strip()
+            
+        data = json.loads(text)
+        
+        category = data.get("category", MediaCategory.other.value)
+        # Ensure category is valid
+        if category not in [e.value for e in MediaCategory]:
+            category = MediaCategory.other.value
+            
+        topic = data.get("education_topic")
+        if topic not in [e.value for e in EducationTopic]:
+            topic = None
+            
+        confidence = float(data.get("confidence", 0.8))
+        
+        return category, topic, confidence
+    except Exception as e:
+        print(f"AI Classification failed: {e}")
+        return None
 
 
 def extract_yt_info(url: str) -> dict:
@@ -137,50 +202,65 @@ async def analyze_url(url: str) -> dict:
         "confidence": 0.5
     }
 
+    # Extract metadata using yt-dlp if it's youtube
+    # Even for other platforms, we can try yt-dlp to get a generic title
+    try:
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, extract_yt_info, url)
+        
+        result["title"] = info.get('title')
+        result["channel"] = info.get('uploader')
+        desc = info.get('description')
+        result["description"] = desc[:500] if desc else None
+        result["thumbnail"] = info.get('thumbnail')
+        result["duration"] = info.get('duration')
+        result["tags"] = info.get('tags', [])
+        yt_category = info.get('categories', [None])[0]
+    except Exception as e:
+        print(f"Error extracting yt info: {e}")
+        yt_category = None
+
+    # Platform overrides for obvious cases
     if platform in [MediaPlatform.netflix.value, MediaPlatform.prime_video.value, MediaPlatform.disney_plus.value, MediaPlatform.hotstar.value]:
         result["category"] = MediaCategory.movie.value
         result["confidence"] = 0.9
-        return result
-        
-    if platform == MediaPlatform.instagram.value:
+        # Still attempt AI classification to see if we can get better metadata/confidence
+    elif platform == MediaPlatform.instagram.value:
         result["category"] = MediaCategory.entertainment.value
         result["confidence"] = 0.9
-        return result
-        
-    if 'goodreads.com' in url.lower() or '/dp/' in url.lower():
+    elif 'goodreads.com' in url.lower() or '/dp/' in url.lower():
         result["category"] = MediaCategory.book.value
         result["confidence"] = 0.9
-        return result
-
-    if platform == MediaPlatform.youtube.value:
-        try:
-            loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(None, extract_yt_info, url)
-            
-            result["title"] = info.get('title')
-            result["channel"] = info.get('uploader')
-            desc = info.get('description')
-            result["description"] = desc[:500] if desc else None
-            result["thumbnail"] = info.get('thumbnail')
-            result["duration"] = info.get('duration')
-            result["tags"] = info.get('tags', [])
-            
-            yt_category = info.get('categories', [None])[0]
-            
-            cat, topic, conf = classify_content(
+        
+    # Attempt AI Classification first
+    ai_result = await ai_classify(
+        url=url, 
+        title=result["title"], 
+        description=result["description"], 
+        tags=result["tags"], 
+        channel=result["channel"]
+    )
+    
+    if ai_result:
+        cat, topic, conf = ai_result
+        # Trust AI if confidence is high or we only had default category
+        if conf >= 0.7 or result["category"] == MediaCategory.other.value:
+            result["category"] = cat
+            result["education_topic"] = topic
+            result["confidence"] = conf
+    else:
+        # Fallback to heuristic classification if AI is disabled or fails
+        if platform == MediaPlatform.youtube.value:
+            cat, topic, conf = heuristic_classify(
                 result["title"],
-                desc,
+                result["description"],
                 result["tags"],
                 result["channel"],
                 yt_category,
                 result["duration"]
             )
-            
             result["category"] = cat
             result["education_topic"] = topic
             result["confidence"] = conf
-            
-        except Exception as e:
-            print(f"Error extracting yt info: {e}")
-            
+
     return result
