@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WatchQueue — Register</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .pwd-strength {
+            height: 4px;
+            background: var(--glass);
+            border-radius: 2px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+            display: flex;
+        }
+        .pwd-strength-bar {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s;
+        }
+        .pwd-reqs {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .pwd-req {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .pwd-req.valid { color: #10B981; }
+        .pwd-req.invalid { color: #EF4444; }
+    </style>
+</head>
+<body class="auth-page">
+    <div class="card auth-card">
+        <div class="auth-header">
+            <h1 class="page-title" style="font-size: 1.5rem;">Create Account</h1>
+            <p style="color: var(--text-muted); margin-top: 0.25rem;">Join WatchQueue today</p>
+        </div>
+        
+        <form id="register-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" class="input" required minlength="3" maxlength="50" pattern="^[a-zA-Z0-9_]+$">
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Letters, numbers, and underscores only</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" class="input" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" class="input" required minlength="8">
+                <div class="pwd-strength">
+                    <div id="pwd-bar" class="pwd-strength-bar"></div>
+                </div>
+                <div class="pwd-reqs">
+                    <div id="req-len" class="pwd-req invalid"><span>✕</span> At least 8 characters</div>
+                    <div id="req-let" class="pwd-req invalid"><span>✕</span> At least one letter</div>
+                    <div id="req-num" class="pwd-req invalid"><span>✕</span> At least one number</div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem; padding: 0.75rem;" id="btn-submit" disabled>
+                Create Account
+            </button>
+        </form>
+        
+        <div style="text-align: center; margin-top: 1.5rem; font-size: 0.9rem;">
+            <span style="color: var(--text-muted);">Already have an account?</span>
+            <a href="/index.html" style="color: #06B6D4; font-weight: 500; margin-left: 0.5rem;">Login here</a>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (Auth.isLoggedIn()) {
+                window.location.href = '/dashboard.html';
+            }
+            
+            const form = document.getElementById('register-form');
+            const pwdInput = document.getElementById('password');
+            const pwdBar = document.getElementById('pwd-bar');
+            const btnSubmit = document.getElementById('btn-submit');
+            
+            const reqs = {
+                len: document.getElementById('req-len'),
+                let: document.getElementById('req-let'),
+                num: document.getElementById('req-num'),
+            };
+            
+            let isPwdValid = false;
+            
+            pwdInput.addEventListener('input', (e) => {
+                const v = e.target.value;
+                const hasLen = v.length >= 8;
+                const hasLet = /[a-zA-Z]/.test(v);
+                const hasNum = /[0-9]/.test(v);
+                
+                updateReq(reqs.len, hasLen);
+                updateReq(reqs.let, hasLet);
+                updateReq(reqs.num, hasNum);
+                
+                let score = 0;
+                if (hasLen) score += 33;
+                if (hasLet) score += 33;
+                if (hasNum) score += 34;
+                
+                pwdBar.style.width = `${score}%`;
+                if (score < 50) pwdBar.style.background = '#EF4444';
+                else if (score < 100) pwdBar.style.background = '#F59E0B';
+                else pwdBar.style.background = '#10B981';
+                
+                isPwdValid = hasLen && hasLet && hasNum;
+                validateForm();
+            });
+            
+            form.addEventListener('input', validateForm);
+            
+            function updateReq(el, isValid) {
+                el.className = `pwd-req ${isValid ? 'valid' : 'invalid'}`;
+                el.innerHTML = `<span>${isValid ? '✓' : '✕'}</span> ${el.innerText.substring(2)}`;
+            }
+            
+            function validateForm() {
+                const uValid = document.getElementById('username').checkValidity();
+                const eValid = document.getElementById('email').checkValidity();
+                btnSubmit.disabled = !(uValid && eValid && isPwdValid);
+            }
+            
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!isPwdValid) return;
+                
+                const originalText = btnSubmit.textContent;
+                btnSubmit.textContent = 'Creating account...';
+                btnSubmit.disabled = true;
+                
+                const data = {
+                    username: document.getElementById('username').value,
+                    email: document.getElementById('email').value,
+                    password: pwdInput.value
+                };
+                
+                try {
+                    // Register
+                    await api('/auth/register', {
+                        method: 'POST',
+                        body: JSON.stringify(data)
+                    });
+                    
+                    showToast('Account created successfully! Logging in...');
+                    
+                    // Auto Login
+                    const loginParams = new URLSearchParams();
+                    loginParams.append('username', data.username);
+                    loginParams.append('password', data.password);
+                    
+                    const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: loginParams.toString()
+                    });
+                    
+                    if (res.ok) {
+                        const loginData = await res.json();
+                        Auth.setToken(loginData.access_token);
+                        Auth.setUser(loginData.user);
+                        window.location.href = '/dashboard.html';
+                    } else {
+                        window.location.href = '/index.html';
+                    }
+                    
+                } catch (err) {
+                    showToast(err.message, 'error');
+                    btnSubmit.textContent = originalText;
+                    btnSubmit.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
