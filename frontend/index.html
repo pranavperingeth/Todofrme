@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WatchQueue — Login</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="auth-page">
+    <div class="card auth-card">
+        <div class="auth-header">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem;">🎬</div>
+            <h1 class="page-title" style="font-size: 1.75rem;">WatchQueue</h1>
+            <p style="color: var(--text-muted); margin-top: 0.5rem;">Your productivity & media hub</p>
+        </div>
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" class="input" required autocomplete="username">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" class="input" required autocomplete="current-password">
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem; padding: 0.75rem;">
+                Login
+            </button>
+        </form>
+        
+        <div style="text-align: center; margin-top: 1.5rem; font-size: 0.9rem;">
+            <span style="color: var(--text-muted);">Don't have an account?</span>
+            <a href="/register.html" style="color: #06B6D4; font-weight: 500; margin-left: 0.5rem;">Register here</a>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (Auth.isLoggedIn()) {
+                window.location.href = '/dashboard.html';
+            }
+            
+            const form = document.getElementById('login-form');
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const btn = form.querySelector('button');
+                const originalText = btn.textContent;
+                btn.textContent = 'Logging in...';
+                btn.disabled = true;
+                
+                const formData = new FormData(form);
+                const searchParams = new URLSearchParams();
+                for (const pair of formData) {
+                    searchParams.append(pair[0], pair[1]);
+                }
+                
+                try {
+                    const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: searchParams.toString()
+                    });
+                    
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.detail || 'Login failed');
+                    }
+                    
+                    const data = await res.json();
+                    Auth.setToken(data.access_token);
+                    Auth.setUser(data.user);
+                    
+                    window.location.href = '/dashboard.html';
+                } catch (err) {
+                    showToast(err.message, 'error');
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
