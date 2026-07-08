@@ -9,5 +9,5 @@ pydantic[email]
 slowapi
 yt-dlp
 httpx
-google-genai
+groq
 python-multipart

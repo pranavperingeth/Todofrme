@@ -7,8 +7,7 @@ import urllib.parse
 from typing import Optional, Tuple
 
 import yt_dlp
-from google import genai
-from google.genai import types
+from groq import Groq
 
 from app.models import EducationTopic, MediaCategory, MediaPlatform
 
@@ -114,12 +113,12 @@ def heuristic_classify(title: str, description: str, tags: list[str], channel: s
 
 
 async def ai_classify(url: str, title: str, description: str, tags: list[str], channel: str) -> Optional[Tuple[str, Optional[str], float]]:
-    """Use Gemini AI to classify the media content."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or api_key == "your_gemini_api_key_here":
+    """Use Groq AI (Llama 3) to classify the media content."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key or api_key == "your-groq-api-key-here":
         return None
         
-    client = genai.Client(api_key=api_key)
+    client = Groq(api_key=api_key)
     
     prompt = f"""
     Analyze the following media item to categorize it.
@@ -142,22 +141,20 @@ async def ai_classify(url: str, title: str, description: str, tags: list[str], c
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
             None,
-            lambda: client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.1
-                )
+            lambda: client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model="llama3-8b-8192",
+                temperature=0.1,
+                response_format={"type": "json_object"}
             )
         )
         
-        text = response.text.strip()
-        if text.startswith('```json'):
-            text = text[7:]
-        if text.endswith('```'):
-            text = text[:-3]
-        text = text.strip()
-            
+        text = response.choices[0].message.content
         data = json.loads(text)
         
         category = data.get("category", MediaCategory.other.value)
