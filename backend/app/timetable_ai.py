@@ -1,25 +1,27 @@
 """
-timetable_ai.py — AI-powered timetable extraction using Google Gemini Vision.
+timetable_ai.py — AI-powered timetable extraction using GitHub Models (Llama 3.2 Vision).
 
-Accepts an image file path, sends it to Gemini 2.0 Flash, and returns
-structured timetable data as a list of entries.
+Accepts an image file path, sends it to Llama-3.2-11B-Vision-Instruct via GitHub's free API, 
+and returns structured timetable data as a list of entries.
 """
 
+import base64
 import json
 import os
 from typing import Optional
 
 from dotenv import load_dotenv
-from google import genai
+from openai import OpenAI
 
 load_dotenv()
 
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+# We expect a GitHub Personal Access Token
+GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
 
 
 async def extract_timetable(image_path: str) -> list[dict]:
     """
-    Extract timetable entries from an image using Gemini Vision.
+    Extract timetable entries from an image using GitHub Models (Llama 3.2 Vision).
     
     Args:
         image_path: Absolute path to the timetable image file.
@@ -27,14 +29,20 @@ async def extract_timetable(image_path: str) -> list[dict]:
     Returns:
         List of dicts with keys: day_of_week, subject, start_time, end_time, room
     """
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY not set in environment. Google Gemini is required for Vision capabilities.")
+    if not GITHUB_TOKEN or GITHUB_TOKEN == "your-github-token-here":
+        raise ValueError("GITHUB_TOKEN not set in environment. A GitHub token is required for Vision capabilities.")
     
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    # Initialize the OpenAI client pointing to GitHub's inference endpoint
+    client = OpenAI(
+        base_url="https://models.inference.ai.azure.com",
+        api_key=GITHUB_TOKEN,
+    )
     
-    # Read the image file
+    # Read the image file and encode to base64
     with open(image_path, "rb") as f:
         image_data = f.read()
+    
+    base64_image = base64.b64encode(image_data).decode("utf-8")
     
     # Determine MIME type from extension
     ext = os.path.splitext(image_path)[1].lower()
@@ -44,6 +52,7 @@ async def extract_timetable(image_path: str) -> list[dict]:
         '.gif': 'image/gif', '.bmp': 'image/bmp',
     }
     mime_type = mime_map.get(ext, 'image/jpeg')
+    image_url = f"data:{mime_type};base64,{base64_image}"
     
     prompt = """Extract the weekly timetable from this image.
 Return ONLY a JSON array (no markdown, no code fences) with objects containing:
@@ -56,16 +65,29 @@ Return ONLY a JSON array (no markdown, no code fences) with objects containing:
 Only include actual class/lecture slots. Skip breaks, lunch, and empty slots.
 If time is not clearly visible, estimate based on typical class durations (1 hour)."""
     
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=[
-            genai.types.Part.from_bytes(data=image_data, mime_type=mime_type),
-            prompt,
-        ],
-    )
-    
-    # Parse the JSON response
-    text = response.text.strip()
+    try:
+        response = client.chat.completions.create(
+            model="Llama-3.2-11B-Vision-Instruct",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image_url,
+                            },
+                        },
+                    ],
+                }
+            ],
+            temperature=0.1
+        )
+        text = response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"GitHub Vision API error: {e}")
+        return []
     
     # Remove markdown code fences if present
     if text.startswith("```"):
