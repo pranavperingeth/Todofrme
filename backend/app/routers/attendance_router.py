@@ -68,14 +68,26 @@ def get_today_attendance_status(
     current_user: models.User = Depends(get_current_user),
 ):
     """Get today's subjects and their attendance status."""
-    today = datetime.now()
-    today_date = today.date()
-    today_name = today.strftime('%A').lower()
+    return _get_attendance_for_date(datetime.now().date(), db, current_user)
+
+
+@router.get("/date/{date_str}")
+def get_date_attendance_status(
+    date_str: date,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Get a specific date's subjects and their attendance status."""
+    return _get_attendance_for_date(date_str, db, current_user)
+
+
+def _get_attendance_for_date(target_date: date, db: Session, current_user: models.User):
+    target_name = target_date.strftime('%A').lower()
     
-    # Check if today is marked as non-working
+    # Check if target date is marked as non-working
     cal_day = db.query(models.CalendarDay).filter(
         models.CalendarDay.user_id == current_user.id,
-        models.CalendarDay.date == today_date
+        models.CalendarDay.date == target_date
     ).first()
     
     if cal_day and not cal_day.is_working_day:
@@ -83,16 +95,16 @@ def get_today_attendance_status(
         
     timetable = db.query(models.TimetableEntry).filter(
         models.TimetableEntry.user_id == current_user.id,
-        models.TimetableEntry.day_of_week == today_name
+        models.TimetableEntry.day_of_week == target_name
     ).all()
     
-    # Get distinct subjects for today
+    # Get distinct subjects for this day
     subjects = list(set([t.subject for t in timetable]))
     
     # Check existing attendance
     records = db.query(models.AttendanceRecord).filter(
         models.AttendanceRecord.user_id == current_user.id,
-        models.AttendanceRecord.date == today_date
+        models.AttendanceRecord.date == target_date
     ).all()
     record_map = {r.subject: r.was_present for r in records}
     

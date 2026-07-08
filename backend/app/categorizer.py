@@ -112,8 +112,8 @@ def heuristic_classify(title: str, description: str, tags: list[str], channel: s
     return category, edu_topic, confidence
 
 
-async def ai_classify(url: str, title: str, description: str, tags: list[str], channel: str) -> Optional[Tuple[str, Optional[str], float]]:
-    """Use Groq AI (Llama 3) to classify the media content."""
+async def ai_classify(url: str, title: str, description: str, tags: list[str], channel: str) -> Optional[Tuple[str, Optional[str], float, Optional[str]]]:
+    """Use Groq AI (Llama 3.1) to classify the media content and infer missing titles."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key or api_key == "your-groq-api-key-here":
         return None
@@ -133,8 +133,9 @@ async def ai_classify(url: str, title: str, description: str, tags: list[str], c
     1. Determine the category strictly from this list: "movie", "education", "entertainment", "book", "podcast", "article", "other".
     2. If the category is "education", determine the most fitting education_topic from this list: "ai_ml", "computer_science", "information_science", "web_dev", "mathematics", "science", "general". If not education, set to null.
     3. Provide a confidence score between 0.0 and 1.0.
+    4. If the provided Title is 'Unknown' or very vague, look at the URL. If it's a known URL (like an IMDb tt* ID), infer the actual name of the media (e.g. tt2560140 = Attack on Titan). 
     
-    Output exactly as JSON with keys: "category", "education_topic", "confidence". Do not include markdown formatting or code blocks.
+    Output exactly as JSON with keys: "category", "education_topic", "confidence", "title" (the original or inferred title). Do not include markdown formatting or code blocks.
     """
     
     try:
@@ -148,7 +149,7 @@ async def ai_classify(url: str, title: str, description: str, tags: list[str], c
                         "content": prompt,
                     }
                 ],
-                model="llama3-8b-8192",
+                model="llama-3.1-8b-instant",
                 temperature=0.1,
                 response_format={"type": "json_object"}
             )
@@ -158,7 +159,6 @@ async def ai_classify(url: str, title: str, description: str, tags: list[str], c
         data = json.loads(text)
         
         category = data.get("category", MediaCategory.other.value)
-        # Ensure category is valid
         if category not in [e.value for e in MediaCategory]:
             category = MediaCategory.other.value
             
@@ -167,8 +167,9 @@ async def ai_classify(url: str, title: str, description: str, tags: list[str], c
             topic = None
             
         confidence = float(data.get("confidence", 0.8))
+        inferred_title = data.get("title")
         
-        return category, topic, confidence
+        return category, topic, confidence, inferred_title
     except Exception as e:
         print(f"AI Classification failed: {e}")
         return None
@@ -233,6 +234,23 @@ async def fetch_youtube_oembed(url: str) -> dict:
     return {}
 
 
+async def fetch_imdb_title_wikidata(imdb_id: str) -> Optional[str]:
+    """Deterministically fetch IMDb title from Wikidata SPARQL to prevent AI hallucinations."""
+    try:
+        query = f'SELECT ?itemLabel WHERE {{ ?item wdt:P345 "{imdb_id}". SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }} }}'
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            headers = {"Accept": "application/json", "User-Agent": "WatchQueue/1.0 (https://github.com)"}
+            resp = await client.get("https://query.wikidata.org/sparql", params={"query": query}, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                bindings = data.get("results", {}).get("bindings", [])
+                if bindings:
+                    return bindings[0].get("itemLabel", {}).get("value")
+    except Exception as e:
+        print(f"Wikidata fetch failed: {e}")
+    return None
+
+
 async def analyze_url(url: str) -> dict:
     platform = detect_platform(url)
     
@@ -276,6 +294,14 @@ async def analyze_url(url: str) -> dict:
                 result["title"] = oembed_data["title"]
                 result["channel"] = oembed_data.get("channel") or result["channel"]
                 result["thumbnail"] = oembed_data.get("thumbnail") or result["thumbnail"]
+                
+        # Try Wikidata SPARQL for IMDb links
+        if 'imdb.com/title/tt' in url.lower():
+            imdb_id_match = re.search(r'(tt\d+)', url.lower())
+            if imdb_id_match:
+                imdb_title = await fetch_imdb_title_wikidata(imdb_id_match.group(1))
+                if imdb_title:
+                    result["title"] = imdb_title
 
         # If still no title, try generic HTML scraper
         if not result["title"]:
@@ -307,12 +333,14 @@ async def analyze_url(url: str) -> dict:
     )
     
     if ai_result:
-        cat, topic, conf = ai_result
+        cat, topic, conf, inferred_title = ai_result
         # Trust AI if confidence is high or we only had default category
         if conf >= 0.7 or result["category"] == MediaCategory.other.value:
             result["category"] = cat
             result["education_topic"] = topic
             result["confidence"] = conf
+        if inferred_title and inferred_title != 'Unknown' and not result["title"]:
+            result["title"] = inferred_title
     else:
         # Fallback to heuristic classification if AI is disabled or fails
         if platform == MediaPlatform.youtube.value:

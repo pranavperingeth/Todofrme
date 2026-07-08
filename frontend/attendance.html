@@ -140,32 +140,53 @@
             renderNav('attendance');
             
             let todayClasses = [];
+            let selectedDateStr = new Date().toISOString().split('T')[0];
+            let isSelectedDateWorking = true;
             
-            async function loadData() {
+            async function loadData(dateStr = null) {
+                if (dateStr) selectedDateStr = dateStr;
+                
                 try {
-                    const [todayData, statsData] = await Promise.all([
-                        api('/attendance/today'),
-                        api('/attendance/stats')
+                    const [dayData, statsData, calendarData] = await Promise.all([
+                        api(`/attendance/date/${selectedDateStr}`),
+                        api('/attendance/stats'),
+                        api(`/attendance/calendar?month=${parseInt(selectedDateStr.split('-')[1])}&year=${selectedDateStr.split('-')[0]}`)
                     ]);
-                    todayClasses = todayData;
-                    renderToday(todayData);
+                    todayClasses = dayData;
+                    
+                    const calDay = calendarData.find(d => d.date === selectedDateStr);
+                    isSelectedDateWorking = calDay ? calDay.is_working_day : true;
+                    
+                    renderClassesForDate(dayData);
                     renderStats(statsData);
                 } catch (e) {
                     showToast('Failed to load data', 'error');
                 }
             }
             
-            // Render Today
-            function renderToday(data) {
+            // Render Classes
+            function renderClassesForDate(data) {
                 const container = document.getElementById('today-container');
-                if (data.length === 0) {
+                const headerDate = new Date(selectedDateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                const isToday = selectedDateStr === new Date().toISOString().split('T')[0];
+                document.querySelector('#today-container').previousElementSibling.textContent = isToday ? "Today's Classes" : `Classes for ${headerDate}`;
+                
+                let toggleBtnHtml = `
+                    <button id="btn-toggle-holiday" class="btn ${isSelectedDateWorking ? 'btn-danger' : 'btn-primary'}" style="width:100%; margin-top:1rem;">
+                        ${isSelectedDateWorking ? 'Mark Entire Day as Holiday' : 'Mark as Working Day'}
+                    </button>
+                `;
+
+                if (!isSelectedDateWorking || data.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state" style="padding: 2rem;">
-                            <div class="empty-icon">🏖️</div>
-                            <h4>No classes today!</h4>
-                            <p>Or marked as a non-working day.</p>
+                            <div class="empty-icon">${isSelectedDateWorking ? '🏖️' : '🌴'}</div>
+                            <h4>No classes on this date!</h4>
+                            <p>${isSelectedDateWorking ? "You don't have any classes scheduled." : "This day is marked as a non-working holiday."}</p>
                         </div>
+                        ${toggleBtnHtml}
                     `;
+                    setupHolidayToggle();
                     return;
                 }
                 
@@ -182,9 +203,11 @@
                     `;
                 });
                 html += '</div>';
-                html += `<button id="btn-save-today" class="btn btn-primary">Save Today's Attendance</button>`;
+                html += `<button id="btn-save-today" class="btn btn-primary" style="width:100%;">Save Attendance for ${headerDate}</button>`;
+                html += toggleBtnHtml;
                 
                 container.innerHTML = html;
+                setupHolidayToggle();
                 
                 // Toggle Logic
                 container.querySelectorAll('.att-toggle').forEach(t => {
@@ -213,16 +236,32 @@
                         return showToast('Please mark all subjects as present or absent', 'error');
                     }
                     
-                    const dateStr = new Date().toISOString().split('T')[0];
                     const records = todayClasses.map(c => ({ subject: c.subject, was_present: c.was_present }));
                     
                     try {
                         await api('/attendance', {
                             method: 'POST',
-                            body: JSON.stringify({ date: dateStr, records })
+                            body: JSON.stringify({ date: selectedDateStr, records })
                         });
                         showToast('Attendance saved!');
                         loadData();
+                    } catch(e) {
+                        showToast(e.message, 'error');
+                    }
+                });
+            }
+
+            function setupHolidayToggle() {
+                const btn = document.getElementById('btn-toggle-holiday');
+                if (!btn) return;
+                btn.addEventListener('click', async () => {
+                    try {
+                        await api(`/attendance/calendar/${selectedDateStr}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ is_working_day: !isSelectedDateWorking })
+                        });
+                        loadData();
+                        loadCalendar();
                     } catch(e) {
                         showToast(e.message, 'error');
                     }
@@ -295,23 +334,15 @@
                         const dayNum = parseInt(d.date.split('-')[2]);
                         const isWorking = d.is_working_day;
                         
+                        const isSelected = d.date === selectedDateStr;
                         const el = document.createElement('div');
                         el.className = `cal-day ${isWorking ? 'cal-working' : 'cal-nonworking'}`;
+                        if (isSelected) el.style.border = '2px solid var(--accent)';
                         el.textContent = dayNum;
                         
-                        el.addEventListener('click', async () => {
-                            try {
-                                await api(`/attendance/calendar/${d.date}`, {
-                                    method: 'PUT',
-                                    body: JSON.stringify({ is_working_day: !isWorking })
-                                });
-                                loadCalendar();
-                                if (d.date === new Date().toISOString().split('T')[0]) {
-                                    loadData(); // Reload today if toggling today
-                                }
-                            } catch(e) {
-                                showToast(e.message, 'error');
-                            }
+                        el.addEventListener('click', () => {
+                            loadData(d.date);
+                            loadCalendar(); // Re-render to highlight selected
                         });
                         
                         grid.appendChild(el);
