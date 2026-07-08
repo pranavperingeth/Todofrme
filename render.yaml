@@ -1,0 +1,25 @@
+services:
+  # The FastAPI Backend
+  - type: web
+    name: watchqueue-app
+    env: python
+    region: oregon
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: watchqueue-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false # You will enter this manually in the Render dashboard
+
+databases:
+  # The PostgreSQL Database
+  - name: watchqueue-db
+    region: oregon
+    plan: free
