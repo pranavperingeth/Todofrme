@@ -10,4 +10,5 @@ slowapi
 yt-dlp
 httpx
 groq
+google-genai
 python-multipart
