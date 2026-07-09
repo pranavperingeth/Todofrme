@@ -9,7 +9,8 @@
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white)](https://sqlalchemy.org)
 [![JWT](https://img.shields.io/badge/JWT-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)](https://jwt.io)
 [![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Gemini](https://img.shields.io/badge/Gemini_AI-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://aistudio.google.com)
+[![Groq](https://img.shields.io/badge/Groq-F55036?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com)
+[![GitHub_Models](https://img.shields.io/badge/GitHub_Models-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/marketplace/models)
 
 ---
 
@@ -120,7 +121,7 @@ Dedicated view for learning content, organized by topic:
 
 ### 📅 AI-Powered Timetable
 - **Upload a photo** of your timetable (printed or screenshot)
-- **Google Gemini Vision** extracts subjects, times, and rooms automatically
+- **GitHub Models (Llama 3.2 Vision)** extracts subjects, times, and rooms automatically
 - **Weekly view**: Mon–Sat grid with editable slots
 - **Today's classes**: highlighted at the top for quick reference
 - Re-upload anytime when your schedule changes
@@ -161,8 +162,9 @@ Dedicated view for learning content, organized by topic:
 | **python-jose** | JWT token creation and validation |
 | **bcrypt** | Password hashing (salted, adaptive) |
 | **yt-dlp** | YouTube/video metadata extraction (no download) |
-| **Google Gemini** | AI vision for timetable image extraction |
-| **httpx** | Async HTTP client for external API calls |
+| **Groq (Llama 3.1)** | High-speed AI auto-categorization & title inference |
+| **GitHub Models** | Llama 3.2 Vision for timetable image extraction |
+| **httpx** | Async HTTP client for external API & Wikidata SPARQL |
 | **slowapi** | Rate limiting middleware |
 | **Pydantic v2** | Request/response validation and serialization |
 
@@ -211,8 +213,8 @@ Dedicated view for learning content, organized by topic:
 │  ┌──────────────────────┴──────────────────────────┐           │  │
 │  │           Categorizer Engine     Timetable AI   │           │  │
 │  │  ┌─────────┐ ┌──────────┐  ┌────────────────┐  │           │  │
-│  │  │ yt-dlp  │ │ Keyword  │  │ Gemini Vision  │  │           │  │
-│  │  │Metadata │ │ Matcher  │  │ (Image → JSON) │  │           │  │
+│  │  │ yt-dlp  │ │   Groq   │  │ GitHub Models  │  │           │  │
+│  │  │Metadata │ │(Llama3.1)│  │ (Llama Vision) │  │           │  │
 │  │  └─────────┘ └──────────┘  └────────────────┘  │           │  │
 │  └─────────────────────────────────────────────────┘           │  │
 │                         │                                      │  │
@@ -325,9 +327,14 @@ SECRET_KEY=your-256-bit-secret-key-here
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-# ── Gemini AI (for timetable extraction) ──────────────────────
-# Get a free key from https://aistudio.google.com
-GEMINI_API_KEY=your-google-ai-api-key-here
+# ── AI Services (Groq & GitHub Models) ───────────────────────
+# Get a free API key from https://console.groq.com/keys
+GROQ_API_KEY=your-groq-api-key-here
+
+# 1. Go to https://github.com/settings/tokens?type=beta
+# 2. Click "Generate new token"
+# 3. Under "Account permissions", find "Models" and set to "Read-only"
+GITHUB_TOKEN=your-github-fine-grained-token-here
 ```
 
 ### Database Setup
@@ -782,9 +789,9 @@ For YouTube and other supported sites, `yt-dlp` extracts metadata **without down
 │                          │                       │
 │              ┌───────────┼───────────┐           │
 │              ▼           ▼           ▼           │
-│         YT Category   Keywords    Channel        │
-│          ID Match      Scan       Match          │
-│          (High)       (High)     (Medium)        │
+│         YT Category   Groq Llama  Wikidata       │
+│          ID Match      3.1 8B      SPARQL        │
+│          (High)       (High)     (Fallback)      │
 │              │           │           │           │
 │              └───────────┼───────────┘           │
 │                          ▼                       │
@@ -796,6 +803,13 @@ For YouTube and other supported sites, `yt-dlp` extracts metadata **without down
 │          Category    Edu Topic   Confidence      │
 │         (education)   (ai_ml)     (0.92)        │
 └─────────────────────────────────────────────────┘
+
+### Special Feature: IMDb Anti-Bot Bypass
+Since IMDb strictly blocks automated scraping of metadata, WatchQueue has a specialized fallback:
+1. It detects `imdb.com/title/tt*` in the URL.
+2. It extracts the `tt` slug (e.g., `tt0075314`).
+3. It executes a **Wikidata SPARQL Query** to deterministically fetch the exact movie title from the world's largest open database.
+4. It passes the true title directly to Groq (Llama 3.1) for accurate, hallucination-free categorization.
 ```
 
 ### Step 4: Education Topic Sub-Classification
